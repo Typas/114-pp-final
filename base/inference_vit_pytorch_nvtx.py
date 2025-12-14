@@ -1,5 +1,6 @@
 # inference_vit_pytorch_nvtx.py
 import sys
+from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / 'vit-pytorch'))
 
 import torch

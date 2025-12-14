@@ -1,4 +1,6 @@
-## build our kernel
+Using our defined kernel function (just for reference)
+
+## build our kernel 
 ```bash
 $ pip install .
 ```
@@ -7,4 +9,9 @@ $ pip install .
 
 ```bash
 python ./vit_with_custom_cuda.py
+```
+
+## Profiling
+```bash
+$ nsys profile --stats=true --output=vit_pytorch_profile python ./vit_with_custom_cuda.py
 ```
