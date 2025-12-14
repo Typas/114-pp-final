@@ -1,3 +1,13 @@
+## Env
+```bash
+$ pip install torch 
+```
+
+## Usage
+```bash
+$ python inference_vit_pytorch
+```
+
 ## Nsight Systems Profiling
 
 ```bash
