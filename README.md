@@ -1,4 +1,4 @@
-# Accelerating Vision Transformer Inference with Custom CUDA Softmax Kernels
+# Accelerating Vision Transformer Inference with Custom CUDA Kernels
 
 This is a repository for NTU Parallel Programming Final Project. We aim to accelerate the Self-Attention mechanism in [Vision Transformer (ViT)](https://github.com/lucidrains/vit-pytorch) by implementing different custom CUDA kernels.
 
