@@ -10,10 +10,25 @@ from torch.utils.data import DataLoader
 import time
 from vit_pytorch import ViT
 
+SEED = 42
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+
+    # Set seed before model initialization for reproducibility
+    set_seed(SEED)
+    print(f"Random seed: {SEED}")
+
     print("Creating ViT model (vit-pytorch version)...")
 
     model = ViT(
@@ -27,6 +42,14 @@ def main():
         dropout=0.0,
         emb_dropout=0.0
     ).to(device)
+
+    # Load trained weights if available
+    weight_path = Path(__file__).parent / 'vit_cifar10.pth'
+    if weight_path.exists():
+        model.load_state_dict(torch.load(weight_path, map_location=device))
+        print(f"Loaded weights from: {weight_path}")
+    else:
+        print("Warning: No trained weights found, using random initialization")
 
     model.eval()
 

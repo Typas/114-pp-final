@@ -1,8 +1,10 @@
 """
 ViT Inference with Custom CUDA Softmax Kernel
+Architecture matches vit-pytorch exactly for weight compatibility
 """
 import sys
 import os
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -14,46 +16,32 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import time
 
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
+
 from custom_softmax import custom_softmax, CustomSoftmax, CUDA_AVAILABLE
 
-class CustomAttention(nn.Module):
-    def __init__(self, dim, heads=8, dim_head=64, dropout=0.0):
-        super().__init__()
-        inner_dim = dim_head * heads
-        self.heads = heads
-        self.scale = dim_head ** -0.5
+SEED = 42
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        )
 
-    def forward(self, x):
-        b, n, _ = x.shape
-        h = self.heads
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
-        qkv = self.to_qkv(x).chunk(3, dim=-1)
-        q, k, v = map(lambda t: t.view(b, n, h, -1).transpose(1, 2), qkv)
 
-        with nvtx.range("attention_matmul_qk"):
-            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-
-        with nvtx.range("custom_cuda_softmax"):
-            attn = custom_softmax(dots, dim=-1)
-
-        with nvtx.range("attention_matmul_v"):
-            out = torch.matmul(attn, v)
-
-        out = out.transpose(1, 2).reshape(b, n, -1)
-        return self.to_out(out)
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
 
 
 class FeedForward(nn.Module):
-    """MLP Block"""
-    def __init__(self, dim, hidden_dim, dropout=0.0):
+    """Matches vit-pytorch FeedForward exactly"""
+    def __init__(self, dim, hidden_dim, dropout=0.):
         super().__init__()
         self.net = nn.Sequential(
+            nn.LayerNorm(dim),
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
@@ -65,24 +53,72 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 
-class TransformerBlock(nn.Module):
-    """Transformer Block with Pre-LayerNorm"""
-    def __init__(self, dim, heads, dim_head, mlp_dim, dropout=0.0):
+class Attention(nn.Module):
+    """Matches vit-pytorch Attention exactly, but uses custom CUDA softmax"""
+    def __init__(self, dim, heads=8, dim_head=64, dropout=0.):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
-        self.attn = CustomAttention(dim, heads, dim_head, dropout)
-        self.norm2 = nn.LayerNorm(dim)
-        self.ff = FeedForward(dim, mlp_dim, dropout)
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.norm = nn.LayerNorm(dim)
+
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
 
     def forward(self, x):
-        x = x + self.attn(self.norm1(x))
-        x = x + self.ff(self.norm2(x))
-        return x
+        x = self.norm(x)
+
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+
+        with nvtx.range("attention_matmul_qk"):
+            dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        with nvtx.range("custom_cuda_softmax"):
+            attn = custom_softmax(dots, dim=-1)
+        attn = self.dropout(attn)
+
+        with nvtx.range("attention_matmul_v"):
+            out = torch.matmul(attn, v)
+
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+
+class Transformer(nn.Module):
+    """Matches vit-pytorch Transformer exactly"""
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList([])
+
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout),
+                FeedForward(dim, mlp_dim, dropout=dropout)
+            ]))
+
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+
+        return self.norm(x)
 
 
 class CustomViT(nn.Module):
     """
     Vision Transformer with Custom CUDA Softmax
+    Architecture matches vit-pytorch ViT exactly for weight compatibility
     """
     def __init__(
         self,
@@ -93,73 +129,78 @@ class CustomViT(nn.Module):
         depth=12,
         heads=12,
         mlp_dim=3072,
+        pool='cls',
         channels=3,
         dim_head=64,
-        dropout=0.0,
-        emb_dropout=0.0
+        dropout=0.,
+        emb_dropout=0.
     ):
         super().__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
 
-        assert image_size % patch_size == 0, "Image size must be divisible by patch size"
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, \
+            'Image dimensions must be divisible by the patch size.'
 
-        num_patches = (image_size // patch_size) ** 2
-        patch_dim = channels * patch_size * patch_size
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
 
-        self.patch_size = patch_size
-        self.dim = dim
+        assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+        num_cls_tokens = 1 if pool == 'cls' else 0
 
-        self.patch_embedding = nn.Sequential(
-            nn.Conv2d(channels, dim, kernel_size=patch_size, stride=patch_size),
+        # Matches vit-pytorch exactly
+        self.to_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_height, p2=patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
         )
 
-        # Position embedding
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(num_cls_tokens, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(num_patches + num_cls_tokens, dim))
+
         self.dropout = nn.Dropout(emb_dropout)
 
-        # Transformer blocks
-        self.transformer = nn.Sequential(*[
-            TransformerBlock(dim, heads, dim_head, mlp_dim, dropout)
-            for _ in range(depth)
-        ])
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
 
-        # Classification head
-        self.norm = nn.LayerNorm(dim)
-        self.head = nn.Linear(dim, num_classes)
+        self.pool = pool
+        self.to_latent = nn.Identity()
+
+        self.mlp_head = nn.Linear(dim, num_classes)
 
     def forward(self, img):
-        b = img.shape[0]
+        batch = img.shape[0]
 
-        # Patch embedding
         with nvtx.range("patch_embedding"):
-            x = self.patch_embedding(img)  # (B, dim, H/P, W/P)
-            x = x.flatten(2).transpose(1, 2)  # (B, num_patches, dim)
+            x = self.to_patch_embedding(img)
 
-        # Add cls token
-        cls_tokens = self.cls_token.expand(b, -1, -1)
-        x = torch.cat([cls_tokens, x], dim=1)
+        cls_tokens = repeat(self.cls_token, '... d -> b ... d', b=batch)
+        x = torch.cat((cls_tokens, x), dim=1)
 
-        # Add position embedding
+        seq = x.shape[1]
+
         with nvtx.range("position_embedding"):
-            x = x + self.pos_embedding
+            x = x + self.pos_embedding[:seq]
             x = self.dropout(x)
 
-        # Transformer
         with nvtx.range("transformer"):
             x = self.transformer(x)
 
-        # Classification
         with nvtx.range("classification"):
-            x = self.norm(x[:, 0])
-            x = self.head(x)
+            x = x.mean(dim=1) if self.pool == 'mean' else x[:, 0]
+            x = self.to_latent(x)
 
-        return x
+        return self.mlp_head(x)
 
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     print(f"CUDA kernel available: {CUDA_AVAILABLE}")
+
+    # Set seed before model initialization for reproducibility
+    set_seed(SEED)
+    print(f"Random seed: {SEED}")
 
     print("\n" + "=" * 50)
     print("Creating Custom ViT with CUDA Softmax")
@@ -176,6 +217,14 @@ def main():
         dropout=0.0,
         emb_dropout=0.0
     ).to(device)
+
+    # Load trained weights if available
+    weight_path = Path(__file__).parent.parent / 'base' / 'vit_cifar10.pth'
+    if weight_path.exists():
+        model.load_state_dict(torch.load(weight_path, map_location=device))
+        print(f"Loaded weights from: {weight_path}")
+    else:
+        print("Warning: No trained weights found, using random initialization")
 
     model.eval()
 
