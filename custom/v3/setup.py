@@ -14,7 +14,6 @@ setup(
                     "--use_fast_math",
                     "-lineinfo",
                     "-std=c++17",
-                    "-gencode=arch=compute_89,code=sm_89",
                 ],
             },
         )

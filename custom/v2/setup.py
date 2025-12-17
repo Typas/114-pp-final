@@ -13,8 +13,6 @@ setup(
                     "-O3",
                     "--use_fast_math",
                     "-lineinfo",
-                    # RTX 4090 = SM89
-                    "-gencode=arch=compute_89,code=sm_89",
                 ],
             },
         )
