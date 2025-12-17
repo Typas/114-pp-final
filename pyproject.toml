@@ -14,6 +14,8 @@ dependencies = [
     "vit-pytorch",
     "einops",
     "setuptools",
+    "matplotlib",
+    "numpy",
 ]
 
 [tool.setuptools]

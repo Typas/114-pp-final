@@ -20,8 +20,7 @@ base/vit_cifar10.pth
 *.cu.o
 *.nsys-rep
 *.sqlite
-results/
 
 # Analysis files
 *.AnalysisSummary.html
-*.DiagnosticsSummary.html
+*.DiagnosticsSummary.htmlbase/vit_cifar10.pth
