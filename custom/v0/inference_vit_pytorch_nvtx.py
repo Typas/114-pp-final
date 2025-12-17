@@ -13,10 +13,24 @@ import time  # 仍保留，但我們用 CUDA events 量測
 from vit_pytorch import ViT
 from patch_sa_v0 import patch_vit_pytorch_attention_sa_v0
 
+SEED = 42
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def main():
     device = torch.device('cuda')
     print(f"Using device: {device}")
+
+    # Set seed before model initialization for reproducibility
+    set_seed(SEED)
+    print(f"Random seed: {SEED}")
 
     # -------- Create Model --------
     nvtx.range_push("Create Model")
@@ -32,6 +46,15 @@ def main():
         dropout=0.0,
         emb_dropout=0.0
     ).to(device)
+
+    # Load trained weights if available
+    weight_path = Path(__file__).parent.parent.parent / 'base' / 'vit_cifar10.pth'
+    if weight_path.exists():
+        model.load_state_dict(torch.load(weight_path, map_location=device))
+        print(f"Loaded weights from: {weight_path}")
+    else:
+        print("Warning: No trained weights found, using random initialization")
+
     model.eval()
 
     # ★ Patch vit-pytorch attention to use your SA v0 kernel
