@@ -13,7 +13,8 @@ setup(
                 'nvcc': [
                     '-O3',
                     '--use_fast_math',
-                    '-gencode=arch=compute_120,code=sm_120',  # RTX 5090, Blackwell
+                    #'-gencode=arch=compute_120,code=sm_120',  # RTX 5090, Blackwell
+                    '-gencode=arch=compute_89,code=sm_89',  # RTX 4090
                     # '-gencode=arch=compute_86,code=sm_86',  # RTX 3090, Ampere
                     # '-gencode=arch=compute_75,code=sm_75',  # RTX 2080, Turing
                     # '-gencode=arch=compute_80,code=sm_80',  # A100

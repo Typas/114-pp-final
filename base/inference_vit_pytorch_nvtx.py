@@ -68,35 +68,117 @@ def main():
 
     # ========== Inference ==========
     print("Starting inference (profiling 10 batches)...")
-    total_time = 0
     max_batches = 10
 
+    # 只在 capture 邊界同步一次，避免把 pipeline 砍斷
+    torch.cuda.synchronize()
+    nvtx.range_push("NSYS_CAPTURE")
+
     nvtx.range_push("Inference Loop")
-    with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(test_loader):
-            if batch_idx >= max_batches:
-                break
 
-            nvtx.range_push(f"Batch {batch_idx}: Data Transfer")
-            images = images.to(device)
+    # events for timing (GPU)
+    starter = torch.cuda.Event(enable_timing=True)
+    ender   = torch.cuda.Event(enable_timing=True)
+
+    # streams
+    compute_stream = torch.cuda.current_stream()
+    copy_stream    = torch.cuda.Stream()
+
+    # helper: async prefetch next batch to GPU on copy_stream
+    def prefetch_to_gpu(batch):
+        images, labels = batch
+        with torch.cuda.stream(copy_stream):
+            nvtx.range_push("H2D Prefetch")
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
             nvtx.range_pop()
+        ev = torch.cuda.Event()
+        ev.record(copy_stream)   # record when copy is done
+        return images, labels, ev
 
-            torch.cuda.synchronize()
-            start_time = time.time()
+    it = iter(test_loader)
+
+    with torch.inference_mode():
+        # prefetch first batch
+        first = next(it)
+        images_cur, labels_cur, ev_cur = prefetch_to_gpu(first)
+
+        starter.record()
+
+        for batch_idx in range(max_batches):
+            # prefetch next batch ASAP (overlap with current compute)
+            if batch_idx + 1 < max_batches:
+                nxt = next(it)
+                images_next, labels_next, ev_next = prefetch_to_gpu(nxt)
+            else:
+                images_next = labels_next = ev_next = None
+
+            # make sure current batch H2D finished before compute uses it
+            compute_stream.wait_event(ev_cur)
 
             nvtx.range_push(f"Batch {batch_idx}: Forward")
-            outputs = model(images)
+            outputs = model(images_cur)
             nvtx.range_pop()
 
-            torch.cuda.synchronize()
-            total_time += (time.time() - start_time)
+            # swap buffers
+            images_cur, labels_cur, ev_cur = images_next, labels_next, ev_next
 
-    nvtx.range_pop()
+        ender.record()
 
-    avg_time = total_time / max_batches * 1000
-    print(f"\nAverage time per batch: {avg_time:.2f} ms")
-    print(f"Throughput: {32 * max_batches / total_time:.2f} images/sec")
+    # only one sync at the end (for correct timing)
+    torch.cuda.synchronize()
 
+    nvtx.range_pop()  # Inference Loop
+    nvtx.range_pop()  # NSYS_CAPTURE
+
+    total_ms = starter.elapsed_time(ender)
+    avg_time_per_batch = total_ms / max_batches
+    print(f"\nAverage time per batch: {avg_time_per_batch:.2f} ms")
+    print(f"Throughput: {32 * max_batches / (total_ms / 1000.0):.2f} images/sec")
+
+    
+    # # ========== Inference ==========
+    # print("Starting inference (profiling 10 batches)...")
+    # max_batches = 10
+
+    # # 只在 capture 邊界同步一次，避免把 pipeline 砍斷
+    # torch.cuda.synchronize()
+    # nvtx.range_push("NSYS_CAPTURE")
+
+    # nvtx.range_push("Inference Loop")
+
+    # # 用 CUDA events 量測，不在 batch 內 synchronize
+    # starter = torch.cuda.Event(enable_timing=True)
+    # ender   = torch.cuda.Event(enable_timing=True)
+
+    # with torch.inference_mode():  # inference_mode 比 no_grad 更適合推論
+    #     starter.record()
+
+    #     for batch_idx, (images, labels) in enumerate(test_loader):
+    #         if batch_idx >= max_batches:
+    #             break
+
+    #         nvtx.range_push(f"Batch {batch_idx}: Data Transfer")
+    #         images = images.to(device, non_blocking=True)
+    #         nvtx.range_pop()
+
+    #         nvtx.range_push(f"Batch {batch_idx}: Forward")
+    #         outputs = model(images)
+    #         nvtx.range_pop()
+
+    #     ender.record()
+
+    # nvtx.range_pop()  # Inference Loop
+
+    # # 這裡同步一次就夠：確保 10 batches 的 GPU 工作都完成，時間也才會正確
+    # torch.cuda.synchronize()
+    # nvtx.range_pop()  # NSYS_CAPTURE
+
+    # # 10 batches 的總 GPU 時間（ms），再算平均
+    # total_ms = starter.elapsed_time(ender)
+    # avg_time_per_batch = total_ms / max_batches
+    # print(f"\nAverage time per batch: {avg_time_per_batch:.2f} ms")
+    # print(f"Throughput: {32 * max_batches / (total_ms / 1000.0):.2f} images/sec")
 
 if __name__ == '__main__':
     main()
