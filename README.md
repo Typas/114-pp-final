@@ -4,6 +4,8 @@ This is a repository for NTU Parallel Programming Final Project. We aim to accel
 
 ## Project Overview
 
+TBD
+
 ## Project Structure
 
 ```
@@ -11,7 +13,7 @@ This is a repository for NTU Parallel Programming Final Project. We aim to accel
 ├── base/                           # Baseline implementation
 │   ├── inference_vit_pytorch.py    # ViT inference using vit-pytorch
 │   ├── train_vit_pytorch.py        # Training script for ViT on CIFAR-10
-│   └── vit_cifar10.pth             # Pretrained weights (download separately)
+│   └── vit_cifar10.pth             # Pretrained weights
 ├── custom/                         
 │   ├── v0                          
 │   ├── v1                          
@@ -31,13 +33,6 @@ This is a repository for NTU Parallel Programming Final Project. We aim to accel
 - CUDA Toolkit 12.x
 - NVIDIA GPU with compute capability 7.0+
 
-### Python Dependencies
-```
-torch
-torchvision
-einops
-```
-
 ## Setup
 
 TBD.
@@ -53,7 +48,7 @@ bash bench.sh
 This script will:
 1. Compile the custom CUDA kernel
 2. Run baseline inference with vit-pytorch (using PyTorch softmax)
-3. Run optimized inference with custom CUDA softmax
+3. Run optimized inference with custom CUDA.
 4. Generate Nsight Systems profiling reports in `results/`
 
 ### Run Individual Scripts
