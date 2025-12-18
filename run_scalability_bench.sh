@@ -26,7 +26,7 @@ nvcc --version
 IMAGE_SIZES=(224 384 512)
 PATCH_SIZE=16
 # Note: v0 is excluded due to extremely slow performance at large token counts
-VERSIONS=(baseline v1 v2 v3)
+VERSIONS=(baseline v1 v2 v3 v4 v5 v6)
 BATCH_SIZE=32
 NUM_BATCHES=10
 
@@ -41,7 +41,8 @@ echo "========================================="
 echo "Compiling Custom CUDA Kernels"
 echo "========================================="
 
-for ver in v0 v1 v2 v3; do
+# Skip v0 due to slow performance
+for ver in v1 v2 v3 v4 v5 v6; do
     echo "[${ver}] Compiling..."
     (cd custom/${ver} && uv run python setup.py install)
 done

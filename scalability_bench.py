@@ -14,6 +14,9 @@ sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v0'))
 sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v1'))
 sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v2'))
 sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v3'))
+sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v4'))
+sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v5'))
+sys.path.insert(0, str(ROOT_DIR / 'custom' / 'v6'))
 
 import torch
 import torch.cuda.nvtx as nvtx
@@ -47,6 +50,15 @@ def get_patch_function(version):
     elif version == 'v3':
         from custom.v3.patch_sa_v3 import patch_vit_pytorch_attention_sa_v3
         return patch_vit_pytorch_attention_sa_v3
+    elif version == 'v4':
+        from custom.v4.patch_sa_v4 import patch_vit_pytorch_attention_sa_v4
+        return patch_vit_pytorch_attention_sa_v4
+    elif version == 'v5':
+        from custom.v5.patch_sa_v5 import patch_vit_pytorch_attention_sa_v5
+        return patch_vit_pytorch_attention_sa_v5
+    elif version == 'v6':
+        from custom.v6.patch_sa_v6 import patch_vit_pytorch_attention_sa_v6
+        return patch_vit_pytorch_attention_sa_v6
     else:
         raise ValueError(f"Unknown version: {version}")
 
@@ -157,7 +169,7 @@ def main():
     parser.add_argument('--patch-size', type=int, default=16,
                         help='Patch size (default: 16)')
     parser.add_argument('--version', type=str, required=True,
-                        choices=['baseline', 'v0', 'v1', 'v2', 'v3'],
+                        choices=['baseline', 'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6'],
                         help='Kernel version to test')
     parser.add_argument('--batch-size', type=int, default=32,
                         help='Batch size (default: 32)')

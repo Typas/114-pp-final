@@ -6,11 +6,14 @@ This is a repository for NTU Parallel Programming Final Project. We aim to accel
 
 We implemented and compared multiple CUDA kernel versions for the Self-Attention mechanism:
 
-- **baseline**: PyTorch native implementation (uses highly optimized CUTLASS GEMM + cuDNN softmax)
-- **v0**: Naive CUDA kernel (single-threaded per output element)
-- **v1**: Optimized with shared memory tiling
-- **v2**: Further optimized with register blocking
-- **v3**: Best performing custom kernel with additional optimizations
+- **baseline**: PyTorch native implementation (uses cuDNN Flash Attention)
+- **v0**: Naive CUDA kernel with one thread per output element
+- **v1**: Shared memory tiling with Q_ROWS=16
+- **v2**: Memory coalescing optimization for Q/K/V loads
+- **v3**: WMMA (Tensor Core) for Q×K matrix multiplication
+- **v4**: Multi-warp parallelism with Q_ROWS=64 and 4 warps
+- **v5**: Larger Q tile (Q_ROWS=128, 8 warps) for better memory efficiency
+- **v6**: Coalesced K loading to fix stride-64 memory access pattern in v5
 
 ## Scalability Benchmark Results
 
@@ -18,11 +21,13 @@ We benchmarked different kernel versions across various image sizes (token count
 
 | Version | 224px (197 tokens) | 384px (577 tokens) | 512px (1025 tokens) |
 |---------|-------------------|-------------------|---------------------|
-| baseline | 38.11 µs | 670.62 µs | 2.12 ms |
-| v0 | 48.01 ms | 410.74 ms | 1.30 s |
-| v1 | 4.68 ms | 39.83 ms | 129.61 ms |
-| v2 | 1.92 ms | 15.69 ms | 52.09 ms |
-| v3 | 1.42 ms | 11.47 ms | 36.68 ms |
+| baseline | 38.00 µs | 670.83 µs | 2.12 ms |
+| v1 | 4.68 ms | 39.69 ms | 129.13 ms |
+| v2 | 1.93 ms | 15.67 ms | 51.95 ms |
+| v3 | 1.42 ms | 11.44 ms | 36.64 ms |
+| v4 | 988.45 µs | 6.97 ms | 20.92 ms |
+| v5 | 699.27 µs | 4.08 ms | 12.16 ms |
+| v6 | 649.13 µs | 3.76 ms | 11.22 ms |
 
 *Table: Average attention kernel time per call (32 batch × 10 iterations × 12 layers × 2 calls/layer = 240 calls)*
 
@@ -35,11 +40,15 @@ All custom kernels show O(N²) scaling as expected for self-attention:
 
 ### Performance Visualization
 
-#### With all versions
-![Scalability Plot with v0](results/scalability/scalability_plot_with_v0.png)
+#### Scalability (Log Scale)
+![Scalability Plot Log Scale](results/scalability/scalability_plot_log_no_v0.png)
 
-#### Without v0
-![Scalability Plot without v0](results/scalability/scalability_plot_no_v0.png)
+#### Scalability (Log Scale, with v0)
+![Scalability Plot Log Scale with v0](results/scalability/scalability_plot_log_with_v0.png)
+
+### Roofline Model Analysis (512×512)
+
+![Roofline Model](results/scalability/roofline_512.png)
 
 ## Project Structure
 
@@ -49,11 +58,14 @@ All custom kernels show O(N²) scaling as expected for self-attention:
 │   ├── inference_vit_pytorch.py    # ViT inference using vit-pytorch
 │   ├── train_vit_pytorch.py        # Training script for ViT on CIFAR-10
 │   └── vit_cifar10.pth             # Pretrained weights
-├── custom/                         
-│   ├── v0                          
-│   ├── v1                          
-│   ├── v2                          
-│   └── v3                          
+├── custom/
+│   ├── v0
+│   ├── v1
+│   ├── v2
+│   ├── v3
+│   ├── v4
+│   ├── v5
+│   └── v6                          
 ├── data/                           # Dataset directory (CIFAR-10)
 ├── results/                        # Nsight profiling results
 ├── vit-pytorch/                    # vit-pytorch library (submodule)

@@ -20,6 +20,9 @@ PROFILES = [
     ("v1", "custom_v1_profile.nsys-rep"),
     ("v2", "custom_v2_profile.nsys-rep"),
     ("v3", "custom_v3_profile.nsys-rep"),
+    ("v4", "custom_v4_profile.nsys-rep"),
+    ("v5", "custom_v5_profile.nsys-rep"),
+    ("v6", "custom_v6_profile.nsys-rep"),
 ]
 
 
@@ -29,6 +32,7 @@ def run_nsys_stats(nsys_rep_path, report_type):
         "/usr/local/cuda-12.8/bin/nsys", "stats",
         "--report", report_type,
         "--format", "csv",
+        "--force-export", "true",
         str(nsys_rep_path)
     ]
     try:
@@ -202,7 +206,7 @@ def generate_report():
         report_lines.append(f"\n{'Version':<12} {'Total GPU Time':>15} {'Speedup':>10} {'Softmax Time':>15} {'Softmax Speedup':>15}")
         report_lines.append("-" * 70)
 
-        for name in ['baseline', 'v0', 'v1', 'v2', 'v3']:
+        for name in ['baseline', 'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']:
             if name not in all_results:
                 continue
             r = all_results[name]
@@ -222,7 +226,7 @@ def generate_report():
         max_time = max(r['total_gpu_time'] for r in all_results.values())
         bar_width = 50
 
-        for name in ['baseline', 'v0', 'v1', 'v2', 'v3']:
+        for name in ['baseline', 'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']:
             if name not in all_results:
                 continue
             r = all_results[name]

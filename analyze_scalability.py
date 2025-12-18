@@ -18,7 +18,7 @@ PLOT_FILE = RESULTS_DIR / "scalability_plot.png"
 
 IMAGE_SIZES = [224, 384, 512]
 PATCH_SIZE = 16
-VERSIONS = ['baseline', 'v0', 'v1', 'v2', 'v3']
+VERSIONS = ['baseline', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']  # v0 excluded due to slow performance
 
 # Plot styling
 VERSION_COLORS = {
@@ -27,6 +27,9 @@ VERSION_COLORS = {
     'v1': '#3498db',        # blue
     'v2': '#9b59b6',        # purple
     'v3': '#f39c12',        # orange
+    'v4': '#e91e63',        # pink
+    'v5': '#00bcd4',        # cyan
+    'v6': '#ff5722',        # deep orange
 }
 VERSION_MARKERS = {
     'baseline': 'o',
@@ -34,6 +37,9 @@ VERSION_MARKERS = {
     'v1': '^',
     'v2': 'D',
     'v3': 'v',
+    'v4': 'p',              # pentagon
+    'v5': 'h',              # hexagon
+    'v6': '*',              # star
 }
 
 
@@ -43,6 +49,7 @@ def run_nsys_stats(nsys_rep_path):
         "/usr/local/cuda-12.8/bin/nsys", "stats",
         "--report", "cuda_gpu_kern_sum",
         "--format", "csv",
+        "--force-export", "true",
         str(nsys_rep_path)
     ]
     try:
@@ -99,14 +106,17 @@ def parse_kernel_csv(csv_output):
 def get_attention_kernel_time(kernels, version):
     """Get the self-attention kernel time for a specific version."""
     for k in kernels:
-        name_lower = k['name'].lower()
+        name = k['name']
+        name_lower = name.lower()
         if version == 'baseline':
             if 'softmax' in name_lower:
                 return k['total_time_ns'], k['avg_ns'], k['instances']
         else:
-            if f'sa_forward_{version}_kernel' in name_lower or f'sa_{version}_kernel' in name_lower:
+            # Check for custom kernel names (case-sensitive for template names)
+            # e.g., sa_forward_v1_kernel<...>, sa_forward_v2_kernel<...>
+            if f'sa_forward_{version}_kernel' in name or f'sa_{version}_kernel' in name:
                 return k['total_time_ns'], k['avg_ns'], k['instances']
-            # Also check for template versions like sa_forward_v1_kernel<...>
+            # Also check lowercase for other formats
             if f'sa_forward_{version}' in name_lower:
                 return k['total_time_ns'], k['avg_ns'], k['instances']
     return None, None, None

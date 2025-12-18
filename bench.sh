@@ -28,14 +28,11 @@ echo "========================================="
 mkdir -p results
 
 # =========================================
-# Compile all Custom CUDA Kernels
+# Compile all Custom CUDA Kernels (skip v0 due to slow performance)
 # =========================================
 echo "========================================="
 echo "Compiling Custom CUDA Kernels"
 echo "========================================="
-
-echo "[v0] Compiling..."
-(cd custom/v0 && uv run python setup.py install)
 
 echo "[v1] Compiling..."
 (cd custom/v1 && uv run python setup.py install)
@@ -45,6 +42,15 @@ echo "[v2] Compiling..."
 
 echo "[v3] Compiling..."
 (cd custom/v3 && uv run python setup.py install)
+
+echo "[v4] Compiling..."
+(cd custom/v4 && uv run python setup.py install)
+
+echo "[v5] Compiling..."
+(cd custom/v5 && uv run python setup.py install)
+
+echo "[v6] Compiling..."
+(cd custom/v6 && uv run python setup.py install)
 
 # =========================================
 # Run Baseline Benchmark
@@ -56,14 +62,8 @@ echo "========================================="
     uv run python base/inference_vit_pytorch_nvtx.py
 
 # =========================================
-# Run Custom Kernel Benchmarks (v0 - v3)
+# Run Custom Kernel Benchmarks (v1 - v4, skip v0)
 # =========================================
-echo "========================================="
-echo "Running Custom Kernel v0 Benchmark"
-echo "========================================="
-"$CUDA_HOME/bin/nsys" profile -o results/custom_v0_profile --force-overwrite true \
-    uv run python custom/v0/inference_vit_pytorch_nvtx.py
-
 echo "========================================="
 echo "Running Custom Kernel v1 Benchmark"
 echo "========================================="
@@ -82,6 +82,24 @@ echo "========================================="
 "$CUDA_HOME/bin/nsys" profile -o results/custom_v3_profile --force-overwrite true \
     uv run python custom/v3/inference_vit_pytorch_nvtx_v3.py
 
+echo "========================================="
+echo "Running Custom Kernel v4 Benchmark"
+echo "========================================="
+"$CUDA_HOME/bin/nsys" profile -o results/custom_v4_profile --force-overwrite true \
+    uv run python custom/v4/inference_vit_pytorch_nvtx_v4.py
+
+echo "========================================="
+echo "Running Custom Kernel v5 Benchmark"
+echo "========================================="
+"$CUDA_HOME/bin/nsys" profile -o results/custom_v5_profile --force-overwrite true \
+    uv run python custom/v5/inference_vit_pytorch_nvtx_v5.py
+
+echo "========================================="
+echo "Running Custom Kernel v6 Benchmark"
+echo "========================================="
+"$CUDA_HOME/bin/nsys" profile -o results/custom_v6_profile --force-overwrite true \
+    uv run python custom/v6/inference_vit_pytorch_nvtx_v6.py
+
 # =========================================
 # Summary
 # =========================================
@@ -91,10 +109,12 @@ echo "Benchmarking Complete!"
 echo "========================================="
 echo "Reports generated in results/ directory:"
 echo "  - baseline_profile.nsys-rep"
-echo "  - custom_v0_profile.nsys-rep"
 echo "  - custom_v1_profile.nsys-rep"
 echo "  - custom_v2_profile.nsys-rep"
 echo "  - custom_v3_profile.nsys-rep"
+echo "  - custom_v4_profile.nsys-rep"
+echo "  - custom_v5_profile.nsys-rep"
+echo "  - custom_v6_profile.nsys-rep"
 echo ""
 echo "To view reports:"
 echo "  nsys-ui results/baseline_profile.nsys-rep"
