@@ -12,7 +12,6 @@ dist/
 htmlcov/
 .mypy_cache/
 .pytest_cache/
-base/vit_cifar10.pth
 
 # CUDA / Build Artifacts
 *.so
@@ -23,4 +22,7 @@ base/vit_cifar10.pth
 
 # Analysis files
 *.AnalysisSummary.html
-*.DiagnosticsSummary.htmlbase/vit_cifar10.pth
+*.DiagnosticsSummary.html
+
+# Dataset
+*.pth
